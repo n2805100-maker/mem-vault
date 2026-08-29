@@ -1,0 +1,10 @@
+{
+  "description": "Preserve cherished family memories with a warm, private app that captures stories, voices, and traditions, helping families honor their loved ones.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
