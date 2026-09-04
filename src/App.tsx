@@ -1321,6 +1321,26 @@ function CreateProfileScreen({
   const [hometown, setHometown] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [photoFile, setPhotoFile] = useState(null as File | null);
+  const [photoPreview, setPhotoPreview] = useState(null as string | null);
+  const photoInputRef = useRef(null as HTMLInputElement | null);
+
+  function handlePhotoPick(e: any) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setSaveError('');
+    if (!file.type.startsWith('image/')) {
+      setSaveError('Please choose an image file.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setSaveError('That image is over 5MB. Please choose a smaller one.');
+      return;
+    }
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }
+
   async function handleCreateProfile() {
     setSaveError('');
     if (!name.trim()) {
@@ -1336,12 +1356,29 @@ function CreateProfileScreen({
       setSaving(false);
       return;
     }
+
+    let avatarPath = null as string | null;
+    if (photoFile) {
+      const ext = photoFile.name.split('.').pop() || 'jpg';
+      avatarPath = `${user.id}/avatar-${Date.now()}.${ext}`;
+      const { error: photoErr } = await supabase.storage
+        .from('avatars')
+        .upload(avatarPath, photoFile, { upsert: true });
+      if (photoErr) {
+        setSaveError(photoErr.message);
+        setSaving(false);
+        return;
+      }
+    }
+
     const { error } = await supabase.from('profiles').insert({
       owner_id: user.id,
       name,
       date_of_birth: dob,
       relation,
+      hometown,
       who_type: who,
+      avatar_url: avatarPath,
     });
     setSaving(false);
     if (error) {
@@ -1420,43 +1457,80 @@ function CreateProfileScreen({
             : 'This is the start of their vault.'}
         </p>
 
-        {/* Photo upload */}
-        <div
+                {/* Photo upload */}
+                <div
           style={{
             display: 'flex',
-            justifyContent: 'center',
+            flexDirection: 'column',
+            alignItems: 'center',
             marginBottom: 28,
           }}
         >
-          <div style={{ position: 'relative' }}>
-            <div
+          <button
+            type="button"
+            onClick={() =>
+              photoInputRef.current && photoInputRef.current.click()
+            }
+            style={{
+              width: 96,
+              height: 96,
+              borderRadius: 48,
+              background: photoPreview
+                ? 'none'
+                : `linear-gradient(135deg, ${C.sagePale}, ${C.brownLight}55)`,
+              border: `2px dashed ${C.sageMid}`,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              gap: 4,
+              overflow: 'hidden',
+              padding: 0,
+            }}
+          >
+            {photoPreview ? (
+              <img
+                src={photoPreview}
+                alt="Selected photo"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : (
+              <>
+                <span style={{ fontSize: 28 }}>📷</span>
+                <span
+                  style={{
+                    ...sans,
+                    fontSize: 10,
+                    color: C.sageMid,
+                    fontWeight: 500,
+                  }}
+                >
+                  Add photo
+                </span>
+              </>
+            )}
+          </button>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoPick}
+            style={{ display: 'none' }}
+          />
+          {photoPreview && (
+            <span
               style={{
-                width: 96,
-                height: 96,
-                borderRadius: 48,
-                background: `linear-gradient(135deg, ${C.sagePale}, ${C.brownLight}55)`,
-                border: `2px dashed ${C.sageMid}`,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                gap: 4,
+                ...sans,
+                fontSize: 12,
+                color: C.sage,
+                fontWeight: 600,
+                marginTop: 8,
               }}
             >
-              <span style={{ fontSize: 28 }}>📷</span>
-              <span
-                style={{
-                  ...sans,
-                  fontSize: 10,
-                  color: C.sageMid,
-                  fontWeight: 500,
-                }}
-              >
-                Add photo
-              </span>
-            </div>
-          </div>
+              Change photo
+            </span>
+          )}
         </div>
 
         {/* Fields */}
