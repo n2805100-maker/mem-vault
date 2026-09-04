@@ -590,7 +590,31 @@ function BottomNav({
 }
 
 // ─── Photo avatar ─────────────────────────────────────────────────────────────
-function Avatar({ size = 72 }: { size?: number }) {
+async function getAvatarSignedUrl(path: string | null) {
+  if (!path) return null;
+  const { data } = await supabase.storage
+    .from('avatars')
+    .createSignedUrl(path, 3600);
+  return data ? data.signedUrl : null;
+}
+
+function Avatar({
+  size = 72,
+  url = null,
+  name = '',
+}: {
+  size?: number;
+  url?: string | null;
+  name?: string;
+}) {
+  const initials = name
+    .split(' ')
+    .map((w) => w.charAt(0))
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
   return (
     <div
       style={{
@@ -604,18 +628,28 @@ function Avatar({ size = 72 }: { size?: number }) {
         border: `3px solid ${C.cream}`,
         boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
         overflow: 'hidden',
+        flexShrink: 0,
       }}
     >
-      <img
-        src={`https://images.unsplash.com/photo-1581579438747-1dc8d17bbce4?w=${
-          size * 2
-        }&h=${size * 2}&fit=crop&auto=format`}
-        alt="Margaret Sharma"
-        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.display = 'none';
-        }}
-      />
+      {url ? (
+        <img
+          src={url}
+          alt={name || 'Profile photo'}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      ) : (
+        <span
+          style={{
+            ...serif,
+            fontSize: size * 0.34,
+            fontWeight: 600,
+            color: C.cream,
+            letterSpacing: '0.02em',
+          }}
+        >
+          {initials || '🌿'}
+        </span>
+      )}
     </div>
   );
 }
@@ -743,7 +777,10 @@ function AuthScreen({ nav }: { nav: (s: Screen) => void }) {
 
   async function handleGoogleAuth() {
     setError('');
-    await supabase.auth.signInWithOAuth({ provider: 'google' });
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    });
   }
 
   return (
@@ -1556,11 +1593,16 @@ function CreateProfileScreen({
 // SCREEN 4 — Dashboard
 // ════════════════════════════════════════════════════════════════════════════════
 function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
-  const [profile, setProfile] = useState<{
-    name: string;
-    date_of_birth: string;
-    who_type: string | null;
-  } | null>(null);
+  const [profile, setProfile] = useState(
+    null as {
+      name: string;
+      date_of_birth: string;
+      who_type: string | null;
+      avatar_url: string | null;
+    } | null
+  );
+  const [avatarUrl, setAvatarUrl] = useState(null as string | null);
+
   useEffect(() => {
     async function loadProfile() {
       const {
@@ -1569,12 +1611,15 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
       if (!user) return;
       const { data } = await supabase
         .from('profiles')
-        .select('name, date_of_birth, who_type')
+        .select('name, date_of_birth, who_type, avatar_url')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (data) setProfile(data);
+      if (data) {
+        setProfile(data);
+        setAvatarUrl(await getAvatarSignedUrl(data.avatar_url));
+      }
     }
     loadProfile();
   }, []);
@@ -1648,7 +1693,13 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
               {profile ? `Born ${profile.date_of_birth}` : ''}
             </p>
           </div>
-          <Avatar size={56} />
+          <button
+  onClick={() => nav('profile')}
+  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+  aria-label="Open your profile"
+>
+<Avatar size={56} url={avatarUrl} name={profile?.name || ''} />
+</button>
         </div>
 
         {/* Memory badge */}
@@ -3364,10 +3415,17 @@ function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
   const [shareFamily, setShareFamily] = useState(true);
   const [notifications, setNotifications] = useState(true);
   const [autoBackup, setAutoBackup] = useState(false);
-  const [profile, setProfile] = useState<{
-    name: string;
-    date_of_birth: string;
-  } | null>(null);
+  const [profile, setProfile] = useState(
+    null as {
+      name: string;
+      date_of_birth: string;
+      avatar_url: string | null;
+    } | null
+  );
+  const [avatarUrl, setAvatarUrl] = useState(null as string | null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef(null as HTMLInputElement | null);
 
   useEffect(() => {
     async function loadProfile() {
@@ -3377,15 +3435,72 @@ function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
       if (!user) return;
       const { data } = await supabase
         .from('profiles')
-        .select('name, date_of_birth')
+        .select('name, date_of_birth, avatar_url')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (data) setProfile(data);
+      if (data) {
+        setProfile(data);
+        setAvatarUrl(await getAvatarSignedUrl(data.avatar_url));
+      }
     }
     loadProfile();
   }, []);
+
+  async function handlePhotoChange(e: any) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    setUploadError('');
+
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Please choose an image file.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('That image is over 5MB. Please choose a smaller one.');
+      return;
+    }
+
+    setUploading(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setUploadError('You need to be signed in.');
+      setUploading(false);
+      return;
+    }
+
+    const ext = file.name.split('.').pop() || 'jpg';
+    const path = `${user.id}/avatar-${Date.now()}.${ext}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { upsert: true });
+
+    if (uploadErr) {
+      setUploadError(uploadErr.message);
+      setUploading(false);
+      return;
+    }
+
+    const { error: updateErr } = await supabase
+      .from('profiles')
+      .update({ avatar_url: path })
+      .eq('owner_id', user.id);
+
+    if (updateErr) {
+      setUploadError(updateErr.message);
+      setUploading(false);
+      return;
+    }
+
+    setAvatarUrl(await getAvatarSignedUrl(path));
+    setUploading(false);
+  }
 
   const Toggle = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
     <button
@@ -3522,7 +3637,50 @@ function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
           borderBottom: `1px solid ${C.border}`,
         }}
       >
-        <Avatar size={80} />
+                <button
+          onClick={() => fileInputRef.current && fileInputRef.current.click()}
+          disabled={uploading}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+          }}
+          aria-label="Change profile photo"
+        >
+          <Avatar size={80} url={avatarUrl} name={profile?.name || ''} />
+          <span
+            style={{
+              ...sans,
+              fontSize: 12,
+              color: C.sage,
+              fontWeight: 600,
+              display: 'block',
+              marginTop: 8,
+            }}
+          >
+            {uploading ? 'Uploading…' : 'Change photo'}
+          </span>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handlePhotoChange}
+          style={{ display: 'none' }}
+        />
+        {uploadError && (
+          <p
+            style={{
+              ...sans,
+              fontSize: 12,
+              color: '#B3452C',
+              margin: '6px 0 0',
+            }}
+          >
+            {uploadError}
+          </p>
+        )}
         <h2
           style={{
             ...serif,
