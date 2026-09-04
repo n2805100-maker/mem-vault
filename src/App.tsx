@@ -3996,8 +3996,15 @@ export default function App() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: C.ivory }}>
-      {renderScreen()}
-    </div>
+    <div
+    style={{
+      minHeight: '100dvh',
+      display: 'flex',
+      flexDirection: 'column',
+      background: C.ivory,
+    }}
+  >
+    {renderScreen()}
+  </div>
   );
 }
