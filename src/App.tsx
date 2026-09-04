@@ -2429,25 +2429,40 @@ function MemorySavedScreen({
   nav: (s: Screen, memoryId?: string) => void;
   memoryId: string | null;
 }) {
-  const [memory, setMemory] = useState<{
-    audio_url: string;
-    duration_seconds: number;
-    prompt: string;
-  } | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [memory, setMemory] = useState(
+    null as {
+      audio_url: string;
+      duration_seconds: number;
+      prompt: string;
+      category: string | null;
+    } | null
+  );
+  const [audioUrl, setAudioUrl] = useState(null as string | null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [category, setCategory] = useState('Childhood');
+  const [categoryError, setCategoryError] = useState('');
+  const audioRef = useRef(null as HTMLAudioElement | null);
+
+  const memoryCategories = [
+    { label: 'Childhood', emoji: '🏡' },
+    { label: 'Family', emoji: '👨‍👩‍👧' },
+    { label: 'Places', emoji: '📍' },
+    { label: 'Music', emoji: '🎵' },
+    { label: 'Recipes', emoji: '🫕' },
+    { label: 'Life Lessons', emoji: '✨' },
+  ];
 
   useEffect(() => {
     async function loadMemory() {
       if (!memoryId) return;
       const { data } = await supabase
         .from('memories')
-        .select('audio_url, duration_seconds, prompt')
+        .select('audio_url, duration_seconds, prompt, category')
         .eq('id', memoryId)
         .maybeSingle();
       if (data) {
         setMemory(data);
+        if (data.category) setCategory(data.category);
         const { data: signed } = await supabase.storage
           .from('audio-recordings')
           .createSignedUrl(data.audio_url, 3600);
@@ -2456,6 +2471,17 @@ function MemorySavedScreen({
     }
     loadMemory();
   }, [memoryId]);
+
+  async function chooseCategory(next: string) {
+    if (!memoryId) return;
+    setCategory(next);
+    setCategoryError('');
+    const { error } = await supabase
+      .from('memories')
+      .update({ category: next })
+      .eq('id', memoryId);
+    if (error) setCategoryError(error.message);
+  }
 
   function togglePlay() {
     if (!audioRef.current) return;
@@ -2568,7 +2594,7 @@ function MemorySavedScreen({
               margin: '0 0 6px',
             }}
           >
-            🏡 Childhood · Audio
+                        {memoryCategories.find((c) => c.label === category)?.emoji} {category} · Audio
           </p>
           <p
             style={{
@@ -2640,7 +2666,60 @@ function MemorySavedScreen({
             </span>
           </div>
         </div>
-
+        <div style={{ width: '100%', marginBottom: 24 }}>
+          <p
+            style={{
+              ...sans,
+              fontSize: 11,
+              color: C.muted,
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              margin: '0 0 10px',
+            }}
+          >
+            Where does this belong?
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {memoryCategories.map((c) => (
+              <button
+                key={c.label}
+                onClick={() => chooseCategory(c.label)}
+                style={{
+                  ...sans,
+                  fontSize: 13,
+                  fontWeight: category === c.label ? 600 : 400,
+                  color: category === c.label ? C.cream : C.charcoal,
+                  background: category === c.label ? C.sage : C.cream,
+                  border: `1.5px solid ${
+                    category === c.label ? C.sage : C.border
+                  }`,
+                  borderRadius: 20,
+                  padding: '8px 14px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <span>{c.emoji}</span>
+                {c.label}
+              </button>
+            ))}
+          </div>
+          {categoryError && (
+            <p
+              style={{
+                ...sans,
+                fontSize: 12,
+                color: '#B3452C',
+                margin: '8px 0 0',
+              }}
+            >
+              {categoryError}
+            </p>
+          )}
+        </div>
         {/* Actions */}
         <button
           onClick={() => nav('memory-prompt')}
