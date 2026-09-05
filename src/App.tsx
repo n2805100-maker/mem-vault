@@ -13,7 +13,9 @@ type Screen =
   | 'memory-saved'
   | 'timeline'
   | 'life-book'
-  | 'profile';
+  | 'profile'
+  | 'write-memory'
+  | 'upload-file';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -31,7 +33,11 @@ const C = {
 };
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
-
+// Remembers which category the Add menu picked, read by the creation screens.
+const pendingEntry = {
+  category: null as string | null,
+  prompt: null as string | null,
+};
 const serif = { fontFamily: "'Playfair Display', Georgia, serif" } as const;
 const sans = { fontFamily: "'DM Sans', system-ui, sans-serif" } as const;
 
@@ -431,6 +437,8 @@ function BottomNav({
   current: Screen;
   nav: (s: Screen) => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   const tabs: { id: Screen; label: string; icon: React.ReactNode }[] = [
     {
       id: 'dashboard',
@@ -443,28 +451,223 @@ function BottomNav({
       icon: <ClockIcon color={current === 'timeline' ? C.sage : C.muted} />,
     },
   ];
+
+  const addOptions: {
+    emoji: string;
+    label: string;
+    hint: string;
+    screen: Screen;
+    category: string | null;
+  }[] = [
+    { emoji: '🎙', label: 'Record a memory', hint: 'Tell a story out loud', screen: 'memory-prompt', category: null },
+    { emoji: '✍️', label: 'Write something down', hint: 'Type it instead', screen: 'write-memory', category: null },
+    { emoji: '🫕', label: 'Add a recipe', hint: 'A dish worth keeping', screen: 'write-memory', category: 'Recipes' },
+    { emoji: '📍', label: 'Add a place', hint: 'Somewhere that mattered', screen: 'write-memory', category: 'Places' },
+    { emoji: '✨', label: 'Add a life lesson', hint: 'Advice worth passing on', screen: 'write-memory', category: 'Life Lessons' },
+    { emoji: '📎', label: 'Upload a file', hint: 'A photo or document', screen: 'upload-file', category: null },
+  ];
+
+  function chooseAdd(opt: { screen: Screen; category: string | null }) {
+    pendingEntry.category = opt.category;
+    pendingEntry.prompt = null;
+    setMenuOpen(false);
+    nav(opt.screen);
+  }
+
   return (
-    <div
-      style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        background: C.cream,
-        borderTop: `1px solid ${C.border}`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-around',
-        padding: '8px 8px 20px',
-        zIndex: 10,
-      }}
-    >
-      {tabs.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => nav(t.id)}
+    <>
+      {menuOpen && (
+        <div
+          onClick={() => setMenuOpen(false)}
           style={{
-            background: current === t.id ? `${C.sage}18` : 'none',
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(41,39,36,0.45)',
+            zIndex: 20,
+            display: 'flex',
+            alignItems: 'flex-end',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              background: C.cream,
+              borderTopLeftRadius: 22,
+              borderTopRightRadius: 22,
+              marginBottom: 76,
+              padding: '10px 16px 28px',
+              boxShadow: '0 -6px 30px rgba(0,0,0,0.18)',
+            }}
+          >
+            <div
+              style={{
+                width: 40,
+                height: 4,
+                borderRadius: 2,
+                background: C.border,
+                margin: '0 auto 14px',
+              }}
+            />
+            <p
+              style={{
+                ...sans,
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: C.muted,
+                margin: '0 0 10px 4px',
+              }}
+            >
+              Add to your vault
+            </p>
+            {addOptions.map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => chooseAdd(opt)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                  width: '100%',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: `1px solid ${C.border}`,
+                  padding: '14px 4px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <span style={{ fontSize: 24, width: 30 }}>{opt.emoji}</span>
+                <span style={{ flex: 1 }}>
+                  <span
+                    style={{
+                      ...sans,
+                      fontSize: 15,
+                      fontWeight: 600,
+                      color: C.charcoal,
+                      display: 'block',
+                    }}
+                  >
+                    {opt.label}
+                  </span>
+                  <span style={{ ...sans, fontSize: 12, color: C.muted }}>
+                    {opt.hint}
+                  </span>
+                </span>
+                <ChevronRight />
+              </button>
+            ))}
+            <button
+              onClick={() => setMenuOpen(false)}
+              style={{
+                ...sans,
+                width: '100%',
+                marginTop: 16,
+                padding: '13px',
+                background: 'transparent',
+                border: `1.5px solid ${C.border}`,
+                borderRadius: 12,
+                fontSize: 15,
+                fontWeight: 500,
+                color: C.charcoal,
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          background: C.cream,
+          borderTop: `1px solid ${C.border}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-around',
+          padding: '8px 8px 20px',
+          zIndex: 30,
+        }}
+      >
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => nav(t.id)}
+            style={{
+              background: current === t.id ? `${C.sage}18` : 'none',
+              border: 'none',
+              borderRadius: 12,
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 3,
+              flex: 1,
+              padding: '6px 4px',
+            }}
+          >
+            {t.icon}
+            <span
+              style={{
+                fontSize: 10,
+                color: current === t.id ? C.sage : C.muted,
+                fontWeight: current === t.id ? 700 : 400,
+                ...sans,
+              }}
+            >
+              {t.label}
+            </span>
+          </button>
+        ))}
+
+        <button
+                    onClick={() => setMenuOpen(!menuOpen)}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 3,
+            flex: 1,
+            position: 'relative',
+            top: -10,
+          }}
+        >
+          <div
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              background: C.sage,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: `0 4px 16px ${C.sage}66`,
+              transform: menuOpen ? 'rotate(45deg)' : 'none',
+              transition: 'transform 0.2s',
+            }}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </div>
+          <span style={{ fontSize: 10, color: C.muted, ...sans }}>Add</span>
+        </button>
+
+        <button
+          onClick={() => nav('life-book')}
+          style={{
+            background: current === 'life-book' ? `${C.sage}18` : 'none',
             border: 'none',
             borderRadius: 12,
             cursor: 'pointer',
@@ -476,116 +679,48 @@ function BottomNav({
             padding: '6px 4px',
           }}
         >
-          {t.icon}
+          <BookIcon color={current === 'life-book' ? C.sage : C.muted} />
           <span
             style={{
               fontSize: 10,
-              color: current === t.id ? C.sage : C.muted,
-              fontWeight: current === t.id ? 700 : 400,
+              color: current === 'life-book' ? C.sage : C.muted,
+              fontWeight: current === 'life-book' ? 600 : 400,
               ...sans,
             }}
           >
-            {t.label}
+            Life Book
           </span>
         </button>
-      ))}
-      <button
-        onClick={() => nav('memory-prompt')}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 3,
-          flex: 1,
-          position: 'relative',
-          top: -10,
-        }}
-      >
-        <div
+
+        <button
+          onClick={() => nav('profile')}
           style={{
-            width: 52,
-            height: 52,
-            borderRadius: 26,
-            background: C.sage,
+            background: current === 'profile' ? `${C.sage}18` : 'none',
+            border: 'none',
+            borderRadius: 12,
+            cursor: 'pointer',
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: `0 4px 16px ${C.sage}66`,
+            gap: 3,
+            flex: 1,
+            padding: '6px 4px',
           }}
         >
-          <svg
-            width="22"
-            height="22"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="white"
-            strokeWidth="2.2"
-            strokeLinecap="round"
+          <UserIcon color={current === 'profile' ? C.sage : C.muted} />
+          <span
+            style={{
+              fontSize: 10,
+              color: current === 'profile' ? C.sage : C.muted,
+              fontWeight: current === 'profile' ? 600 : 400,
+              ...sans,
+            }}
           >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </div>
-        <span style={{ fontSize: 10, color: C.muted, ...sans }}>Add</span>
-      </button>
-      <button
-        onClick={() => nav('life-book')}
-        style={{
-          background: current === 'life-book' ? `${C.sage}18` : 'none',
-          border: 'none',
-          borderRadius: 12,
-          cursor: 'pointer',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 3,
-          flex: 1,
-          padding: '6px 4px',
-        }}
-      >
-        <BookIcon color={current === 'life-book' ? C.sage : C.muted} />
-        <span
-          style={{
-            fontSize: 10,
-            color: current === 'life-book' ? C.sage : C.muted,
-            fontWeight: current === 'life-book' ? 600 : 400,
-            ...sans,
-          }}
-        >
-          Life Book
-        </span>
-      </button>
-      <button
-        onClick={() => nav('profile')}
-        style={{
-          background: current === 'profile' ? `${C.sage}18` : 'none',
-          border: 'none',
-          borderRadius: 12,
-          cursor: 'pointer',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 3,
-          flex: 1,
-          padding: '6px 4px',
-        }}
-      >
-        <UserIcon color={current === 'profile' ? C.sage : C.muted} />
-        <span
-          style={{
-            fontSize: 10,
-            color: current === 'profile' ? C.sage : C.muted,
-            fontWeight: current === 'profile' ? 600 : 400,
-            ...sans,
-          }}
-        >
-          Profile
-        </span>
-      </button>
-    </div>
+            Profile
+          </span>
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -2122,7 +2257,11 @@ function MemoryPromptScreen({ nav }: { nav: (s: Screen) => void }) {
 
           {/* Secondary action */}
           <button
-            onClick={() => nav('memory-saved')}
+                        onClick={() => {
+                          pendingEntry.category = 'Childhood';
+                          pendingEntry.prompt = 'What was your childhood home like?';
+                          nav('write-memory');
+                        }}
             style={{
               width: '100%',
               padding: '15px',
@@ -2274,7 +2413,8 @@ function AudioRecordingScreen({ nav }: { nav: (s: Screen) => void }) {
       .insert({
         owner_id: user.id,
         profile_id: profileRow?.id ?? null,
-        prompt: 'What was your childhood home like?',
+        prompt: pendingEntry.prompt || 'What was your childhood home like?',
+        category: pendingEntry.category || 'Childhood',
         audio_url: fileName,
         duration_seconds: finalSeconds,
       })
@@ -2369,7 +2509,7 @@ function AudioRecordingScreen({ nav }: { nav: (s: Screen) => void }) {
             margin: '0 0 32px',
           }}
         >
-          What was your childhood home like?
+                    {pendingEntry.prompt || 'What was your childhood home like?'}
         </h2>
 
         {/* Timer */}
@@ -3564,6 +3704,351 @@ function LifeBookScreen({ nav }: { nav: (s: Screen) => void }) {
 // ════════════════════════════════════════════════════════════════════════════════
 // SCREEN 10 — Profile / Settings
 // ════════════════════════════════════════════════════════════════════════════════
+function WriteMemoryScreen({ nav }: { nav: (s: Screen) => void }) {
+  const [title, setTitle] = useState(pendingEntry.prompt || '');
+  const [body, setBody] = useState('');
+  const [category, setCategory] = useState(pendingEntry.category || 'Childhood');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const cats = [
+    { label: 'Childhood', emoji: '🏡' },
+    { label: 'Family', emoji: '👨‍👩‍👧' },
+    { label: 'Places', emoji: '📍' },
+    { label: 'Music', emoji: '🎵' },
+    { label: 'Recipes', emoji: '🫕' },
+    { label: 'Life Lessons', emoji: '✨' },
+  ];
+  function recordInstead() {
+    if (!title.trim()) {
+      setError('Add a title first, then you can record.');
+      return;
+    }
+    pendingEntry.category = category;
+    pendingEntry.prompt = title;
+    nav('audio-recording');
+  }
+
+  const hints = {
+    Childhood: {
+      heading: 'A childhood memory',
+      titleLabel: 'Title',
+      bodyLabel: 'The memory',
+      title: 'e.g. The house on Bani Park Road',
+      body: 'What did it look like, sound like, smell like? Who else was there?',
+      save: 'Save memory',
+    },
+    Family: {
+      heading: 'About your family',
+      titleLabel: 'Title',
+      bodyLabel: 'The memory',
+      title: 'e.g. How Mum and Dad met',
+      body: 'Who was in it, and what do you remember most about them?',
+      save: 'Save memory',
+    },
+    Places: {
+      heading: 'A place that mattered',
+      titleLabel: 'The place',
+      bodyLabel: 'The memory',
+      title: 'e.g. The Shimla trip, 1984',
+      body: 'Where was it, when did you go, and why has it stayed with you?',
+      save: 'Save memory',
+    },
+    Music: {
+      heading: 'A song, a sound',
+      titleLabel: 'The song',
+      bodyLabel: 'What it brings back',
+      title: 'e.g. The song Nani always hummed',
+      body: 'When did you hear it? Who was singing? What does it bring back?',
+      save: 'Save memory',
+    },
+    Recipes: {
+      heading: 'A recipe worth keeping',
+      titleLabel: 'Recipe name',
+      bodyLabel: 'Ingredients & method',
+      title: "e.g. Dal makhani, my mother's way",
+      body: 'Ingredients, method, and the part only your family knows.',
+      save: 'Save recipe',
+    },
+    'Life Lessons': {
+      heading: 'Something worth passing on',
+      titleLabel: 'The lesson',
+      bodyLabel: 'Why it matters',
+      title: 'e.g. Patience is not waiting',
+      body: 'Where did this come from? Who taught you, and when did it land?',
+      save: 'Save lesson',
+    },
+  };
+  const h = hints[category as keyof typeof hints] || hints.Childhood;
+  async function handleSave() {
+    setError('');
+    if (!title.trim()) {
+      setError('Give it a title so you can find it later.');
+      return;
+    }
+    if (!body.trim()) {
+      setError('Write something first.');
+      return;
+    }
+    setSaving(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setError('You need to be signed in.');
+      setSaving(false);
+      return;
+    }
+    const { data: profileRow } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { error: insErr } = await supabase.from('memories').insert({
+      owner_id: user.id,
+      profile_id: profileRow?.id ?? null,
+      prompt: title,
+      body,
+      category,
+      kind: 'written',
+    });
+    setSaving(false);
+    if (insErr) {
+      setError(insErr.message);
+      return;
+    }
+    nav('life-book');
+  }
+
+
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        background: C.ivory,
+      }}
+    >
+      <div
+        style={{
+          padding: '12px 16px 0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <BackArrow onPress={() => nav('dashboard')} />
+        <span style={{ ...sans, fontSize: 14, color: C.muted }}>
+          {category}
+        </span>
+      </div>
+
+      <div
+        style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 40px' }}
+        className="hide-scroll"
+      >
+        <h1
+          style={{
+            ...serif,
+            fontSize: 26,
+            fontWeight: 600,
+            color: C.charcoal,
+            margin: '0 0 6px',
+          }}
+        >
+                    {h.heading}
+        </h1>
+        <p style={{ ...sans, fontSize: 14, color: C.muted, margin: '0 0 24px' }}>
+          Some things are easier written than spoken.
+        </p>
+
+        <label
+          style={{
+            ...sans,
+            fontSize: 12,
+            fontWeight: 600,
+            color: C.muted,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            display: 'block',
+            marginBottom: 6,
+          }}
+        >
+                   {h.titleLabel}
+        </label>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder={h.title}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '14px 16px',
+            background: C.cream,
+            border: `1.5px solid ${C.border}`,
+            borderRadius: 12,
+            ...sans,
+            fontSize: 15,
+            color: C.charcoal,
+            outline: 'none',
+            marginBottom: 18,
+          }}
+        />
+
+        <label
+          style={{
+            ...sans,
+            fontSize: 12,
+            fontWeight: 600,
+            color: C.muted,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            display: 'block',
+            marginBottom: 6,
+          }}
+        >
+                    {h.bodyLabel}
+        </label>
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={10}
+          placeholder={h.body}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '14px 16px',
+            background: C.cream,
+            border: `1.5px solid ${C.border}`,
+            borderRadius: 12,
+            ...sans,
+            fontSize: 15,
+            lineHeight: 1.6,
+            color: C.charcoal,
+            outline: 'none',
+            resize: 'vertical',
+            marginBottom: 20,
+          }}
+        />
+
+        <label
+          style={{
+            ...sans,
+            fontSize: 12,
+            fontWeight: 600,
+            color: C.muted,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            display: 'block',
+            marginBottom: 10,
+          }}
+        >
+          Where does this belong?
+        </label>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 8,
+            marginBottom: 24,
+          }}
+        >
+          {cats.map((c) => (
+            <button
+              key={c.label}
+              onClick={() => setCategory(c.label)}
+              style={{
+                ...sans,
+                fontSize: 13,
+                fontWeight: category === c.label ? 600 : 400,
+                color: category === c.label ? C.cream : C.charcoal,
+                background: category === c.label ? C.sage : C.cream,
+                border: `1.5px solid ${
+                  category === c.label ? C.sage : C.border
+                }`,
+                borderRadius: 20,
+                padding: '8px 14px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span>{c.emoji}</span>
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        {error && (
+          <p
+            style={{
+              ...sans,
+              fontSize: 13,
+              color: '#B3452C',
+              margin: '0 0 12px',
+            }}
+          >
+            {error}
+          </p>
+        )}
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            width: '100%',
+            padding: '16px',
+            background: C.sage,
+            border: 'none',
+            borderRadius: 12,
+            ...sans,
+            fontSize: 16,
+            fontWeight: 600,
+            color: C.cream,
+            cursor: 'pointer',
+            boxShadow: `0 4px 20px ${C.sage}44`,
+          }}
+        >
+                    {saving ? 'Saving…' : h.save}
+        </button>
+        <button
+onClick={recordInstead}
+style={{
+  width: '100%',
+  marginTop: 12,
+  padding: '15px',
+  background: 'transparent',
+  border: `1.5px solid ${C.border}`,
+  borderRadius: 12,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 10,
+  cursor: 'pointer',
+}}
+>
+<MicIcon size={18} color={C.sage} />
+<span
+  style={{
+    ...sans,
+    fontSize: 15,
+    fontWeight: 500,
+    color: C.charcoal,
+  }}
+>
+  Say it out loud instead
+</span>
+</button>
+      </div>
+    </div>
+  );
+}
+
 function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
   const [shareFamily, setShareFamily] = useState(true);
   const [notifications, setNotifications] = useState(true);
@@ -4064,8 +4549,10 @@ export default function App() {
         return <TimelineScreen nav={setCurrentScreen} />;
       case 'life-book':
         return <LifeBookScreen nav={setCurrentScreen} />;
-      case 'profile':
-        return <ProfileScreen nav={setCurrentScreen} />;
+        case 'profile':
+          return <ProfileScreen nav={setCurrentScreen} />;
+        case 'write-memory':
+          return <WriteMemoryScreen nav={setCurrentScreen} />;
     }
   };
 
