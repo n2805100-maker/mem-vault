@@ -789,57 +789,6 @@ function Avatar({
   );
 }
 
-function PhotoPlaceholder({
-  w,
-  h,
-  seed,
-  alt,
-}: {
-  w: number;
-  h: number;
-  seed: string;
-  alt: string;
-}) {
-  const ids: Record<string, string> = {
-    childhood: '1516627145497-ae6968895b74',
-    house: '1568605114967-8130f3a36994',
-    family: '1511895426340-a0b6e9d17dc0',
-    travel: '1529156069898-49953e39b3ac',
-    recipe: '1495521821757-a1efb6729352',
-    garden: '1416879595882-3373a0480b5b',
-    wedding: '1519741347686-c1e0aadf4611',
-    music: '1493225457124-a3eb161ffa5f',
-  };
-  const id = ids[seed] || '1516627145497-ae6968895b74';
-  return (
-    <div
-      style={{
-        width: w,
-        height: h,
-        borderRadius: 12,
-        overflow: 'hidden',
-        background: C.sagePale,
-        flexShrink: 0,
-      }}
-    >
-      <img
-        src={`https://images.unsplash.com/photo-${id}?w=${w * 2}&h=${
-          h * 2
-        }&fit=crop&auto=format`}
-        alt={alt}
-        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-        onError={(e) => {
-          const el = e.currentTarget.parentElement!;
-          el.style.display = 'flex';
-          el.style.alignItems = 'center';
-          el.style.justifyContent = 'center';
-          (e.target as HTMLImageElement).style.display = 'none';
-        }}
-      />
-    </div>
-  );
-}
-
 // ─── Waveform component ───────────────────────────────────────────────────────
 function Waveform({ active = true }: { active?: boolean }) {
   const bars = [
@@ -877,12 +826,33 @@ function Waveform({ active = true }: { active?: boolean }) {
 
 // ─── Memory category card ─────────────────────────────────────────────────────
 const categories = [
-  { id: 'childhood', emoji: '🏡', label: 'Childhood', count: 4 },
-  { id: 'family', emoji: '👨‍👩‍👧', label: 'Family', count: 3 },
-  { id: 'places', emoji: '📍', label: 'Places', count: 2 },
-  { id: 'music', emoji: '🎵', label: 'Music', count: 1 },
-  { id: 'recipes', emoji: '🫕', label: 'Recipes', count: 2 },
-  { id: 'life-lessons', emoji: '✨', label: 'Life Lessons', count: 1 },
+  { id: 'childhood', emoji: '🏡', label: 'Childhood' },
+  { id: 'family', emoji: '👨‍👩‍👧', label: 'Family' },
+  { id: 'places', emoji: '📍', label: 'Places' },
+  { id: 'music', emoji: '🎵', label: 'Music' },
+  { id: 'recipes', emoji: '🫕', label: 'Recipes' },
+  { id: 'life-lessons', emoji: '✨', label: 'Life Lessons' },
+];
+
+const QUESTIONS = [
+  { category: 'Childhood', text: 'What was your childhood home like?' },
+  { category: 'Childhood', text: 'What did you do after school as a child?' },
+  { category: 'Childhood', text: 'Who was your closest friend growing up?' },
+  { category: 'Childhood', text: 'What were you afraid of as a child?' },
+  { category: 'Family', text: 'How did your parents meet?' },
+  { category: 'Family', text: 'What is your earliest memory of your mother?' },
+  { category: 'Family', text: 'Which family member were you most like?' },
+  { category: 'Family', text: 'What traditions did your family keep?' },
+  { category: 'Places', text: 'Where did you feel happiest?' },
+  { category: 'Places', text: 'Tell me about a journey you never forgot.' },
+  { category: 'Places', text: 'What did your neighbourhood sound like?' },
+  { category: 'Music', text: 'What song takes you straight back?' },
+  { category: 'Music', text: 'What music was played in your house?' },
+  { category: 'Recipes', text: 'What dish did your family make best?' },
+  { category: 'Recipes', text: 'Who taught you to cook, and what?' },
+  { category: 'Life Lessons', text: 'What advice were you given that stuck?' },
+  { category: 'Life Lessons', text: 'What do you know now that you wish you had known at twenty?' },
+  { category: 'Life Lessons', text: 'What are you proudest of?' },
 ];
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -1674,7 +1644,7 @@ function CreateProfileScreen({
             label: 'Full name',
             value: name,
             setter: setName,
-            placeholder: 'e.g. Margaret Sharma',
+            placeholder: 'e.g. their full name',
           },
           {
             label: 'Date of birth',
@@ -1811,43 +1781,63 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
     } | null
   );
   const [avatarUrl, setAvatarUrl] = useState(null as string | null);
+  const [memories, setMemories] = useState([] as any[]);
+  const [counts, setCounts] = useState({} as { [k: string]: number });
+  const [question] = useState(
+    QUESTIONS[Math.floor(Math.random() * QUESTIONS.length)]
+  );
 
   useEffect(() => {
-    async function loadProfile() {
+    async function load() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase
+
+      const { data: p } = await supabase
         .from('profiles')
         .select('name, date_of_birth, who_type, avatar_url')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (data) {
-        setProfile(data);
-        setAvatarUrl(await getAvatarSignedUrl(data.avatar_url));
+      if (p) {
+        setProfile(p);
+        setAvatarUrl(await getAvatarSignedUrl(p.avatar_url));
+      }
+
+      const { data: mems } = await supabase
+        .from('memories')
+        .select('id, prompt, category, kind, created_at, duration_seconds')
+        .eq('owner_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (mems) {
+        setMemories(mems);
+        const c: { [k: string]: number } = {};
+        for (const m of mems) {
+          const key = m.category || 'Childhood';
+          c[key] = (c[key] || 0) + 1;
+        }
+        setCounts(c);
       }
     }
-    loadProfile();
+    load();
   }, []);
-  const [memoryCount, setMemoryCount] = useState(0);
 
-  useEffect(() => {
-    async function loadCount() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-      const { count } = await supabase
-        .from('memories')
-        .select('*', { count: 'exact', head: true })
-        .eq('owner_id', user.id);
-      setMemoryCount(count ?? 0);
-    }
-    loadCount();
-  }, []);
+  const kindIcon: { [k: string]: string } = {
+    audio: '🎙',
+    written: '✍️',
+    file: '📎',
+  };
+
+  function shortDate(iso: string) {
+    return new Date(iso).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    });
+  }
+
   return (
     <div
       style={{
@@ -1859,10 +1849,9 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
       }}
     >
       <div style={{ background: C.sage, paddingBottom: 20 }}>
-        <StatusBar dark />
         <div
           style={{
-            padding: '8px 20px 0',
+            padding: '16px 20px 0',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1889,7 +1878,7 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
                 margin: 0,
               }}
             >
-              {profile?.name || 'Loading…'}
+              {profile?.name || '…'}
             </h1>
             <p
               style={{
@@ -1899,19 +1888,23 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
                 margin: '2px 0 0',
               }}
             >
-              {profile ? `Born ${profile.date_of_birth}` : ''}
+              {profile?.date_of_birth ? `Born ${profile.date_of_birth}` : ''}
             </p>
           </div>
           <button
-  onClick={() => nav('profile')}
-  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-  aria-label="Open your profile"
->
-<Avatar size={56} url={avatarUrl} name={profile?.name || ''} />
-</button>
+            onClick={() => nav('profile')}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+            }}
+            aria-label="Open your profile"
+          >
+            <Avatar size={56} url={avatarUrl} name={profile?.name || ''} />
+          </button>
         </div>
 
-        {/* Memory badge */}
         <div style={{ margin: '16px 20px 0' }}>
           <div
             style={{
@@ -1927,8 +1920,8 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
             <span
               style={{ ...sans, fontSize: 13, color: C.cream, fontWeight: 500 }}
             >
-              {memoryCount} {memoryCount === 1 ? 'Memory' : 'Memories'}{' '}
-              Preserved
+              {memories.length}{' '}
+              {memories.length === 1 ? 'Memory' : 'Memories'} Preserved
             </span>
           </div>
         </div>
@@ -1938,7 +1931,6 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
         style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 0' }}
         className="hide-scroll"
       >
-        {/* Continue her story card */}
         <div
           style={{
             background: C.cream,
@@ -1970,46 +1962,74 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
               fontSize: 18,
               fontWeight: 600,
               color: C.charcoal,
-              margin: '0 0 6px',
-              lineHeight: 1.3,
-            }}
-          >
-            Tell us about your childhood
-          </h3>
-          <p
-            style={{
-              ...sans,
-              fontSize: 13,
-              color: C.muted,
               margin: '0 0 14px',
-              fontStyle: 'italic',
+              lineHeight: 1.35,
             }}
           >
-            "Where did you grow up?"
-          </p>
-          <button
-            onClick={() => nav('memory-prompt')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              background: C.sage,
-              border: 'none',
-              borderRadius: 10,
-              padding: '10px 18px',
-              cursor: 'pointer',
-            }}
-          >
-            <MicIcon size={16} />
-            <span
-              style={{ ...sans, fontSize: 14, fontWeight: 600, color: C.cream }}
+            {question.text}
+          </h3>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={() => {
+                pendingEntry.category = question.category;
+                pendingEntry.prompt = question.text;
+                nav('audio-recording');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                background: C.sage,
+                border: 'none',
+                borderRadius: 10,
+                padding: '10px 18px',
+                cursor: 'pointer',
+              }}
             >
-              Record
-            </span>
-          </button>
+              <MicIcon size={16} />
+              <span
+                style={{
+                  ...sans,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: C.cream,
+                }}
+              >
+                Record
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                pendingEntry.category = question.category;
+                pendingEntry.prompt = question.text;
+                nav('write-memory');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                background: 'transparent',
+                border: `1.5px solid ${C.border}`,
+                borderRadius: 10,
+                padding: '10px 18px',
+                cursor: 'pointer',
+              }}
+            >
+              <PenIcon size={15} />
+              <span
+                style={{
+                  ...sans,
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: C.charcoal,
+                }}
+              >
+                Write
+              </span>
+            </button>
+          </div>
         </div>
 
-        {/* Categories */}
         <p
           style={{
             ...sans,
@@ -2030,7 +2050,7 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
             display: 'grid',
             gridTemplateColumns: '1fr 1fr 1fr',
             gap: 10,
-            marginBottom: 20,
+            marginBottom: 24,
           }}
         >
           {categories.map((cat) => (
@@ -2064,13 +2084,12 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
                 {cat.label}
               </span>
               <span style={{ ...sans, fontSize: 10, color: C.sageMid }}>
-                {cat.count}
+                {counts[cat.label] || 0}
               </span>
             </button>
           ))}
         </div>
 
-        {/* Recent memories */}
         <p
           style={{
             ...sans,
@@ -2084,66 +2103,77 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
         >
           Recently added
         </p>
-        {[
-          {
-            label: '🎙 Audio',
-            title: 'The house on Bani Park Road',
-            time: '0:45',
-            date: 'Aug 12',
-          },
-          {
-            label: '✍️ Written',
-            title: "Mama's dal makhani recipe",
-            date: 'Aug 9',
-          },
-        ].map((m, i) => (
-          <div
-            key={i}
+
+        {memories.length === 0 ? (
+          <p
             style={{
-              background: C.cream,
-              border: `1px solid ${C.border}`,
-              borderRadius: 14,
-              padding: '14px 16px',
-              marginBottom: 10,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
+              ...sans,
+              fontSize: 14,
+              color: C.muted,
+              margin: '0 0 20px',
+              lineHeight: 1.6,
             }}
           >
-            <div
+            Nothing saved yet. Answer the question above, or tap Add below.
+          </p>
+        ) : (
+          memories.slice(0, 3).map((m) => (
+            <button
+              key={m.id}
+              onClick={() => nav('timeline')}
               style={{
-                width: 42,
-                height: 42,
-                borderRadius: 10,
-                background: `${C.sagePale}`,
+                background: C.cream,
+                border: `1px solid ${C.border}`,
+                borderRadius: 14,
+                padding: '14px 16px',
+                marginBottom: 10,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 18,
+                gap: 12,
+                width: '100%',
+                cursor: 'pointer',
+                textAlign: 'left',
               }}
             >
-              {m.label.split(' ')[0]}
-            </div>
-            <div style={{ flex: 1 }}>
-              <p
+              <div
                 style={{
-                  ...sans,
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: C.charcoal,
-                  margin: '0 0 2px',
+                  width: 42,
+                  height: 42,
+                  borderRadius: 10,
+                  background: C.sagePale,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 18,
+                  flexShrink: 0,
                 }}
               >
-                {m.title}
-              </p>
-              <p style={{ ...sans, fontSize: 12, color: C.muted, margin: 0 }}>
-                {m.date}
-                {m.time ? ` · ${m.time}` : ''}
-              </p>
-            </div>
-            <PlayIcon />
-          </div>
-        ))}
+                {kindIcon[m.kind || 'audio'] || '🌿'}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p
+                  style={{
+                    ...sans,
+                    fontSize: 14,
+                    fontWeight: 500,
+                    color: C.charcoal,
+                    margin: '0 0 2px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {m.prompt}
+                </p>
+                <p style={{ ...sans, fontSize: 12, color: C.muted, margin: 0 }}>
+                  {m.category || 'Childhood'} · {shortDate(m.created_at)}
+                </p>
+              </div>
+              <ChevronRight />
+            </button>
+          ))
+        )}
+        <div style={{ height: 12 }} />
       </div>
 
       <BottomNav current="dashboard" nav={nav} />
@@ -2155,6 +2185,25 @@ function DashboardScreen({ nav }: { nav: (s: Screen) => void }) {
 // SCREEN 5 — Memory prompt
 // ════════════════════════════════════════════════════════════════════════════════
 function MemoryPromptScreen({ nav }: { nav: (s: Screen) => void }) {
+  const [index, setIndex] = useState(
+    Math.floor(Math.random() * QUESTIONS.length)
+  );
+  const question = QUESTIONS[index];
+
+  function anotherQuestion() {
+    let next = index;
+    while (next === index && QUESTIONS.length > 1) {
+      next = Math.floor(Math.random() * QUESTIONS.length);
+    }
+    setIndex(next);
+  }
+
+  function go(screen: Screen) {
+    pendingEntry.category = question.category;
+    pendingEntry.prompt = question.text;
+    nav(screen);
+  }
+
   return (
     <div
       style={{
@@ -2164,10 +2213,9 @@ function MemoryPromptScreen({ nav }: { nav: (s: Screen) => void }) {
         background: C.ivory,
       }}
     >
-      <StatusBar />
       <div
         style={{
-          padding: '8px 20px 0',
+          padding: '12px 20px 0',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -2177,136 +2225,133 @@ function MemoryPromptScreen({ nav }: { nav: (s: Screen) => void }) {
         <span
           style={{ ...sans, fontSize: 13, color: C.muted, fontWeight: 500 }}
         >
-          Childhood
+          {question.category}
         </span>
-        <span style={{ ...sans, fontSize: 12, color: C.muted }}>1 of 8</span>
+        <div style={{ width: 24 }} />
       </div>
 
       <div
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '20px 24px 32px',
+          padding: '32px 24px 32px',
           display: 'flex',
           flexDirection: 'column',
+          justifyContent: 'center',
         }}
         className="hide-scroll"
       >
-        {/* Photo */}
-        <PhotoPlaceholder
-          w={327}
-          h={200}
-          seed="house"
-          alt="A cozy childhood home"
-        />
-
-        <div style={{ marginTop: 24 }}>
-          <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
-            <LeafSvg size={14} opacity={0.5} />
-            <LeafSvg size={14} opacity={0.3} flip />
-          </div>
-          <h2
-            style={{
-              ...serif,
-              fontSize: 26,
-              fontWeight: 600,
-              color: C.charcoal,
-              margin: '0 0 10px',
-              lineHeight: 1.35,
-            }}
-          >
-            What was your childhood home like?
-          </h2>
-          <p
-            style={{
-              ...sans,
-              fontSize: 14,
-              color: C.muted,
-              margin: '0 0 28px',
-              lineHeight: 1.6,
-            }}
-          >
-            You can speak, write, or come back later.
-          </p>
-
-          {/* Primary action */}
-          <button
-            onClick={() => nav('audio-recording')}
-            style={{
-              width: '100%',
-              padding: '16px',
-              background: C.sage,
-              border: 'none',
-              borderRadius: 14,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              cursor: 'pointer',
-              marginBottom: 12,
-              boxShadow: `0 4px 18px ${C.sage}44`,
-            }}
-          >
-            <MicIcon size={18} />
-            <span
-              style={{ ...sans, fontSize: 16, fontWeight: 600, color: C.cream }}
-            >
-              Tell the story
-            </span>
-          </button>
-
-          {/* Secondary action */}
-          <button
-                        onClick={() => {
-                          pendingEntry.category = 'Childhood';
-                          pendingEntry.prompt = 'What was your childhood home like?';
-                          nav('write-memory');
-                        }}
-            style={{
-              width: '100%',
-              padding: '15px',
-              background: 'transparent',
-              border: `1.5px solid ${C.border}`,
-              borderRadius: 14,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              cursor: 'pointer',
-              marginBottom: 20,
-            }}
-          >
-            <PenIcon />
-            <span
-              style={{
-                ...sans,
-                fontSize: 15,
-                fontWeight: 500,
-                color: C.charcoal,
-              }}
-            >
-              Write instead
-            </span>
-          </button>
-
-          {/* Skip */}
-          <button
-            onClick={() => nav('memory-prompt')}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              ...sans,
-              fontSize: 14,
-              color: C.sageMid,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
-            Try another question <ChevronRight size={14} color={C.sageMid} />
-          </button>
+        <div
+          style={{
+            display: 'flex',
+            gap: 6,
+            marginBottom: 20,
+            justifyContent: 'center',
+          }}
+        >
+          <LeafSvg size={18} opacity={0.4} />
+          <LeafSvg size={26} opacity={0.7} />
+          <LeafSvg size={18} opacity={0.4} flip />
         </div>
+
+        <h2
+          style={{
+            ...serif,
+            fontSize: 28,
+            fontWeight: 600,
+            color: C.charcoal,
+            margin: '0 0 12px',
+            lineHeight: 1.35,
+            textAlign: 'center',
+          }}
+        >
+          {question.text}
+        </h2>
+        <p
+          style={{
+            ...sans,
+            fontSize: 14,
+            color: C.muted,
+            margin: '0 0 36px',
+            lineHeight: 1.6,
+            textAlign: 'center',
+          }}
+        >
+          Speak it or write it — whichever comes easier.
+        </p>
+
+        <button
+          onClick={() => go('audio-recording')}
+          style={{
+            width: '100%',
+            padding: '16px',
+            background: C.sage,
+            border: 'none',
+            borderRadius: 14,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+            cursor: 'pointer',
+            marginBottom: 12,
+            boxShadow: `0 4px 18px ${C.sage}44`,
+          }}
+        >
+          <MicIcon size={18} />
+          <span
+            style={{ ...sans, fontSize: 16, fontWeight: 600, color: C.cream }}
+          >
+            Tell the story
+          </span>
+        </button>
+
+        <button
+          onClick={() => go('write-memory')}
+          style={{
+            width: '100%',
+            padding: '15px',
+            background: 'transparent',
+            border: `1.5px solid ${C.border}`,
+            borderRadius: 14,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+            cursor: 'pointer',
+            marginBottom: 24,
+          }}
+        >
+          <PenIcon />
+          <span
+            style={{
+              ...sans,
+              fontSize: 15,
+              fontWeight: 500,
+              color: C.charcoal,
+            }}
+          >
+            Write instead
+          </span>
+        </button>
+
+        <button
+          onClick={anotherQuestion}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            ...sans,
+            fontSize: 14,
+            color: C.sageMid,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            alignSelf: 'center',
+          }}
+        >
+          Try another question <ChevronRight size={14} color={C.sageMid} />
+        </button>
       </div>
     </div>
   );
@@ -2789,9 +2834,7 @@ function MemorySavedScreen({
             margin: '0 0 32px',
           }}
         >
-          This piece of Margaret's story
-          <br />
-          is now safely preserved.
+                    It's now safely preserved.
         </p>
 
         {/* Preview card */}
@@ -2827,7 +2870,7 @@ function MemorySavedScreen({
               margin: '0 0 10px',
             }}
           >
-            What was your childhood home like?
+                        {memory?.prompt || ''}
           </p>
           <div
             style={{
@@ -3020,67 +3063,6 @@ function MemorySavedScreen({
 // ════════════════════════════════════════════════════════════════════════════════
 // SCREEN 8 — Life Timeline
 // ════════════════════════════════════════════════════════════════════════════════
-const timelineEvents = [
-  {
-    year: '1948',
-    title: 'Born in Jaipur',
-    desc: 'Margaret Ruth Sharma is born to Priya and Rajan Sharma.',
-    emoji: '🌸',
-    type: 'milestone',
-  },
-  {
-    year: '1955',
-    title: 'The house on Bani Park Road',
-    desc: 'Family moves to a home with a jasmine-covered veranda.',
-    emoji: '🏡',
-    type: 'audio',
-    dur: '0:45',
-  },
-  {
-    year: '1963',
-    title: 'Won the regional singing prize',
-    desc: '"I practised every morning before school."',
-    emoji: '🎵',
-    type: 'written',
-  },
-  {
-    year: '1969',
-    title: 'Wedding day',
-    desc: 'Married Deepak Sharma on a monsoon afternoon in July.',
-    emoji: '💍',
-    type: 'photo',
-  },
-  {
-    year: '1971',
-    title: 'Arjun is born',
-    desc: "Our first child — he had his grandfather's eyes.",
-    emoji: '👶',
-    type: 'photo',
-  },
-  {
-    year: '1984',
-    title: 'The great Shimla trip',
-    desc: 'All six cousins on a train, sharing a thermos of chai.',
-    emoji: '🚂',
-    type: 'audio',
-    dur: '1:12',
-  },
-  {
-    year: '2001',
-    title: 'Dal makhani recipe recorded',
-    desc: 'The recipe passed down from her mother, finally written.',
-    emoji: '🍲',
-    type: 'recipe',
-  },
-  {
-    year: '2018',
-    title: 'Great-grandmother',
-    desc: 'Held baby Priya for the first time — "full circle."',
-    emoji: '🌺',
-    type: 'photo',
-  },
-];
-
 async function getMemoryFileUrl(path: string | null) {
   if (!path) return null;
   const { data } = await supabase.storage
@@ -3493,51 +3475,6 @@ function TimelineScreen({ nav }: { nav: (s: Screen) => void }) {
 // ════════════════════════════════════════════════════════════════════════════════
 // SCREEN 9 — Life Book
 // ════════════════════════════════════════════════════════════════════════════════
-const lifeBookEntries = [
-  {
-    type: 'story',
-    category: 'Childhood',
-    title: 'The house on Bani Park Road',
-    preview:
-      'The jasmine climbed all the way up to the first floor by the time I was ten. Mama used to say it was the house that breathed…',
-    dur: '0:45',
-    seed: 'house',
-  },
-  {
-    type: 'recipe',
-    category: 'Recipes',
-    title: "Dal Makhani — Mama's way",
-    preview:
-      'Soak the lentils the night before. Never skip the overnight soak. This is the only rule Mama was strict about…',
-    seed: 'recipe',
-  },
-  {
-    type: 'photo',
-    category: 'Family',
-    title: 'Wedding, July 1969',
-    preview:
-      'It rained on our wedding day. Deepak said it was a blessing. I said it was just the monsoon being dramatic.',
-    seed: 'wedding',
-  },
-  {
-    type: 'lesson',
-    category: 'Life Lessons',
-    title: 'What patience really means',
-    preview:
-      '"Patience is not waiting. Patience is keeping your heart open while you wait." — Margaret, Aug 2023',
-    seed: 'garden',
-  },
-  {
-    type: 'story',
-    category: 'Places',
-    title: 'The Shimla trip, 1984',
-    preview:
-      'We were six cousins in one compartment with a thermos of chai and one deck of cards. We played until Shimla appeared in the window.',
-    dur: '1:12',
-    seed: 'travel',
-  },
-];
-
 function LifeBookScreen({ nav }: { nav: (s: Screen) => void }) {
   const [activeTab, setActiveTab] = useState('All');
   const [profile, setProfile] = useState(
@@ -4540,30 +4477,33 @@ function UploadFileScreen({ nav }: { nav: (s: Screen) => void }) {
   );
 }
 function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
-  const [shareFamily, setShareFamily] = useState(true);
-  const [notifications, setNotifications] = useState(true);
-  const [autoBackup, setAutoBackup] = useState(false);
   const [profile, setProfile] = useState(
     null as {
       name: string;
       date_of_birth: string;
+      relation: string | null;
+      hometown: string | null;
       avatar_url: string | null;
     } | null
   );
+  const [email, setEmail] = useState('');
   const [avatarUrl, setAvatarUrl] = useState(null as string | null);
+  const [stats, setStats] = useState({ total: 0, cats: 0, audio: 0 });
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef(null as HTMLInputElement | null);
 
   useEffect(() => {
-    async function loadProfile() {
+    async function load() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
+      setEmail(user.email || '');
+
       const { data } = await supabase
         .from('profiles')
-        .select('name, date_of_birth, avatar_url')
+        .select('name, date_of_birth, relation, hometown, avatar_url')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -4572,16 +4512,32 @@ function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
         setProfile(data);
         setAvatarUrl(await getAvatarSignedUrl(data.avatar_url));
       }
+
+      const { data: mems } = await supabase
+        .from('memories')
+        .select('category, kind')
+        .eq('owner_id', user.id);
+      if (mems) {
+        const cats: { [k: string]: boolean } = {};
+        let audio = 0;
+        for (const m of mems) {
+          cats[m.category || 'Childhood'] = true;
+          if ((m.kind || 'audio') === 'audio') audio++;
+        }
+        setStats({
+          total: mems.length,
+          cats: Object.keys(cats).length,
+          audio,
+        });
+      }
     }
-    loadProfile();
+    load();
   }, []);
 
   async function handlePhotoChange(e: any) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
-
     setUploadError('');
-
     if (!file.type.startsWith('image/')) {
       setUploadError('Please choose an image file.');
       return;
@@ -4590,9 +4546,7 @@ function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
       setUploadError('That image is over 5MB. Please choose a smaller one.');
       return;
     }
-
     setUploading(true);
-
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -4601,147 +4555,28 @@ function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
       setUploading(false);
       return;
     }
-
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `${user.id}/avatar-${Date.now()}.${ext}`;
-
-    const { error: uploadErr } = await supabase.storage
+    const { error: upErr } = await supabase.storage
       .from('avatars')
       .upload(path, file, { upsert: true });
-
-    if (uploadErr) {
-      setUploadError(uploadErr.message);
+    if (upErr) {
+      setUploadError(upErr.message);
       setUploading(false);
       return;
     }
-
-    const { error: updateErr } = await supabase
+    const { error: updErr } = await supabase
       .from('profiles')
       .update({ avatar_url: path })
       .eq('owner_id', user.id);
-
-    if (updateErr) {
-      setUploadError(updateErr.message);
+    if (updErr) {
+      setUploadError(updErr.message);
       setUploading(false);
       return;
     }
-
     setAvatarUrl(await getAvatarSignedUrl(path));
     setUploading(false);
   }
-
-  const Toggle = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
-    <button
-      onClick={onToggle}
-      style={{
-        width: 44,
-        height: 24,
-        borderRadius: 12,
-        border: 'none',
-        cursor: 'pointer',
-        background: on ? C.sage : C.border,
-        position: 'relative',
-        transition: 'background 0.2s',
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          top: 2,
-          left: on ? 22 : 2,
-          width: 20,
-          height: 20,
-          borderRadius: 10,
-          background: 'white',
-          transition: 'left 0.2s',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-        }}
-      />
-    </button>
-  );
-
-  const Section = ({
-    title,
-    children,
-  }: {
-    title: string;
-    children: React.ReactNode;
-  }) => (
-    <div style={{ marginBottom: 24 }}>
-      <p
-        style={{
-          ...sans,
-          fontSize: 11,
-          fontWeight: 600,
-          color: C.muted,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          margin: '0 0 8px 4px',
-        }}
-      >
-        {title}
-      </p>
-      <div
-        style={{
-          background: C.cream,
-          border: `1px solid ${C.border}`,
-          borderRadius: 16,
-          overflow: 'hidden',
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-
-  const Row = ({
-    label,
-    value,
-    icon,
-    last = false,
-    onPress,
-  }: {
-    label: string;
-    value?: string;
-    icon?: string;
-    last?: boolean;
-    onPress?: () => void;
-  }) => (
-    <button
-      onClick={onPress}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        padding: '14px 16px',
-        borderBottom: last ? 'none' : `1px solid ${C.border}`,
-        background: 'none',
-        border: 'none',
-        borderBottomWidth: last ? 0 : 1,
-        borderBottomColor: C.border,
-        borderBottomStyle: 'solid',
-        width: '100%',
-        cursor: 'pointer',
-        gap: 12,
-      }}
-    >
-      {icon && <span style={{ fontSize: 18 }}>{icon}</span>}
-      <span
-        style={{
-          ...sans,
-          fontSize: 14,
-          color: C.charcoal,
-          flex: 1,
-          textAlign: 'left',
-        }}
-      >
-        {label}
-      </span>
-      {value && (
-        <span style={{ ...sans, fontSize: 13, color: C.muted }}>{value}</span>
-      )}
-      <ChevronRight />
-    </button>
-  );
 
   return (
     <div
@@ -4753,19 +4588,16 @@ function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
         paddingBottom: 72,
       }}
     >
-      <StatusBar />
-
-      {/* Profile header */}
       <div
         style={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          padding: '12px 20px 24px',
+          padding: '24px 20px 24px',
           borderBottom: `1px solid ${C.border}`,
         }}
       >
-                <button
+        <button
           onClick={() => fileInputRef.current && fileInputRef.current.click()}
           disabled={uploading}
           style={{
@@ -4809,6 +4641,7 @@ function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
             {uploadError}
           </p>
         )}
+
         <h2
           style={{
             ...serif,
@@ -4818,24 +4651,32 @@ function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
             margin: '14px 0 2px',
           }}
         >
-          {profile?.name || 'Loading…'}
+          {profile?.name || '…'}
         </h2>
         <p
-          style={{ ...sans, fontSize: 13, color: C.muted, margin: '0 0 10px' }}
+          style={{ ...sans, fontSize: 13, color: C.muted, margin: '0 0 4px' }}
         >
-          {profile ? `Born ${profile.date_of_birth}` : ''}
+          {profile?.date_of_birth ? `Born ${profile.date_of_birth}` : ''}
         </p>
-        <div style={{ display: 'flex', gap: 16 }}>
+        {profile?.hometown && (
+          <p
+            style={{ ...sans, fontSize: 13, color: C.muted, margin: '0 0 10px' }}
+          >
+            {profile.hometown}
+          </p>
+        )}
+
+        <div style={{ display: 'flex', gap: 20, marginTop: 8 }}>
           {[
-            { n: '13', l: 'Memories' },
-            { n: '3', l: 'Categories' },
-            { n: '2', l: 'Family' },
+            { n: stats.total, l: stats.total === 1 ? 'Memory' : 'Memories' },
+            { n: stats.cats, l: stats.cats === 1 ? 'Category' : 'Categories' },
+            { n: stats.audio, l: stats.audio === 1 ? 'Recording' : 'Recordings' },
           ].map((s) => (
             <div key={s.l} style={{ textAlign: 'center' }}>
               <div
                 style={{
                   ...serif,
-                  fontSize: 18,
+                  fontSize: 20,
                   fontWeight: 600,
                   color: C.sage,
                 }}
@@ -4852,69 +4693,51 @@ function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
         style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 0' }}
         className="hide-scroll"
       >
-        <Section title="Privacy & Ownership">
+        <p
+          style={{
+            ...sans,
+            fontSize: 11,
+            fontWeight: 600,
+            color: C.muted,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            margin: '0 0 8px 4px',
+          }}
+        >
+          Account
+        </p>
+        <div
+          style={{
+            background: C.cream,
+            border: `1px solid ${C.border}`,
+            borderRadius: 16,
+            overflow: 'hidden',
+            marginBottom: 24,
+          }}
+        >
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               padding: '14px 16px',
+              gap: 12,
               borderBottom: `1px solid ${C.border}`,
             }}
           >
-            <span style={{ fontSize: 18, marginRight: 12 }}>👨‍👩‍👧</span>
-            <span style={{ ...sans, fontSize: 14, color: C.charcoal, flex: 1 }}>
-              Share with family
+            <span style={{ fontSize: 18 }}>✉️</span>
+            <span
+              style={{
+                ...sans,
+                fontSize: 14,
+                color: C.charcoal,
+                flex: 1,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {email || '…'}
             </span>
-            <Toggle
-              on={shareFamily}
-              onToggle={() => setShareFamily((p) => !p)}
-            />
           </div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '14px 16px',
-              borderBottom: `1px solid ${C.border}`,
-            }}
-          >
-            <span style={{ fontSize: 18, marginRight: 12 }}>🔔</span>
-            <span style={{ ...sans, fontSize: 14, color: C.charcoal, flex: 1 }}>
-              Memory prompts
-            </span>
-            <Toggle
-              on={notifications}
-              onToggle={() => setNotifications((p) => !p)}
-            />
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '14px 16px',
-            }}
-          >
-            <span style={{ fontSize: 18, marginRight: 12 }}>☁️</span>
-            <span style={{ ...sans, fontSize: 14, color: C.charcoal, flex: 1 }}>
-              Auto backup
-            </span>
-            <Toggle on={autoBackup} onToggle={() => setAutoBackup((p) => !p)} />
-          </div>
-        </Section>
-
-        <Section title="Vault">
-          <Row label="Download Life Book" icon="📕" value="PDF" />
-          <Row label="Export all memories" icon="📦" value="ZIP" />
-          <Row label="Invite family member" icon="➕" last />
-        </Section>
-
-        <Section title="Account">
-          <Row label="Subscription" icon="🌿" value="Family plan" />
-          <Row label="Help & support" icon="💬" />
-          <Row label="About Remna" icon="ℹ️" last />
-        </Section>
-
-        <Section title="Danger Zone">
           <button
             onClick={async () => {
               await supabase.auth.signOut();
@@ -4945,21 +4768,19 @@ function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
               Log out
             </span>
           </button>
-        </Section>
+        </div>
 
-        <div style={{ padding: '8px 0 24px', textAlign: 'center' }}>
-          <p style={{ ...sans, fontSize: 12, color: C.muted, margin: 0 }}>
-            🔒 Your memories are end-to-end encrypted and belong to your family.
-          </p>
+        <div style={{ padding: '0 0 24px', textAlign: 'center' }}>
           <p
             style={{
               ...sans,
-              fontSize: 11,
-              color: C.border,
-              margin: '6px 0 0',
+              fontSize: 12,
+              color: C.muted,
+              margin: 0,
+              lineHeight: 1.6,
             }}
           >
-            Remna · v2.1.0
+            🔒 Private to you. Only you can see your memories.
           </p>
         </div>
       </div>
@@ -4972,18 +4793,7 @@ function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
 // ════════════════════════════════════════════════════════════════════════════════
 // SCREEN NAV LABELS — clickable prototype switcher
 // ════════════════════════════════════════════════════════════════════════════════
-const screenLabels: { id: Screen; label: string }[] = [
-  { id: 'welcome', label: '1 Welcome' },
-  { id: 'choose-who', label: '2 Choose' },
-  { id: 'create-profile', label: '3 Profile' },
-  { id: 'dashboard', label: '4 Dashboard' },
-  { id: 'memory-prompt', label: '5 Prompt' },
-  { id: 'audio-recording', label: '6 Recording' },
-  { id: 'memory-saved', label: '7 Saved' },
-  { id: 'timeline', label: '8 Timeline' },
-  { id: 'life-book', label: '9 Life Book' },
-  { id: 'profile', label: '10 Settings' },
-];
+
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ROOT APP
