@@ -2655,6 +2655,7 @@ function MemorySavedScreen({
   const [isPlaying, setIsPlaying] = useState(false);
   const [category, setCategory] = useState('Childhood');
   const [categoryError, setCategoryError] = useState('');
+  const [happenedOn, setHappenedOn] = useState('');
   const audioRef = useRef(null as HTMLAudioElement | null);
 
   const memoryCategories = [
@@ -2697,6 +2698,14 @@ function MemorySavedScreen({
     if (error) setCategoryError(error.message);
   }
 
+  async function saveDate(value: string) {
+    setHappenedOn(value);
+    if (!memoryId) return;
+    await supabase
+      .from('memories')
+      .update({ happened_on: value || null })
+      .eq('id', memoryId);
+  }
   function togglePlay() {
     if (!audioRef.current) return;
     if (isPlaying) {
@@ -2934,6 +2943,38 @@ function MemorySavedScreen({
             </p>
           )}
         </div>
+        <div style={{ width: '100%', marginBottom: 24 }}>
+          <p
+            style={{
+              ...sans,
+              fontSize: 11,
+              color: C.muted,
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              margin: '0 0 10px',
+            }}
+          >
+            When did this happen?
+          </p>
+          <input
+            type="date"
+            value={happenedOn}
+            onChange={(e) => saveDate(e.target.value)}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '13px 16px',
+              background: C.cream,
+              border: `1.5px solid ${C.border}`,
+              borderRadius: 12,
+              ...sans,
+              fontSize: 15,
+              color: C.charcoal,
+              outline: 'none',
+            }}
+          />
+        </div>
         {/* Actions */}
         <button
           onClick={() => nav('memory-prompt')}
@@ -3040,26 +3081,177 @@ const timelineEvents = [
   },
 ];
 
-function TimelineScreen({ nav }: { nav: (s: Screen) => void }) {
-  const [profile, setProfile] = useState<{
-    name: string;
-    date_of_birth: string;
-  } | null>(null);
-  const [memories, setMemories] = useState(
-    [] as {
-      id: string;
-      prompt: string;
-      audio_url: string;
-      duration_seconds: number | null;
-      category: string | null;
-      created_at: string;
-    }[]
-  );
-  const [playingId, setPlayingId] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+async function getMemoryFileUrl(path: string | null) {
+  if (!path) return null;
+  const { data } = await supabase.storage
+    .from('memory-files')
+    .createSignedUrl(path, 3600);
+  return data ? data.signedUrl : null;
+}
 
-  const categoryEmoji: Record<string, string> = {
+function fmtDur(s: number | null) {
+  if (!s) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function MemoryBody({
+  mem,
+  fileUrl,
+  playing,
+  progress,
+  onTogglePlay,
+}: {
+  mem: any;
+  fileUrl?: string | null;
+  playing: boolean;
+  progress: number;
+  onTogglePlay: () => void;
+}) {
+  const kind = mem.kind || 'audio';
+
+  if (kind === 'written') {
+    const text = mem.body || '';
+    return (
+      <p
+        style={{
+          ...sans,
+          fontSize: 14,
+          lineHeight: 1.6,
+          color: C.muted,
+          margin: '6px 0 0',
+          whiteSpace: 'pre-wrap',
+        }}
+      >
+        {text.length > 220 ? text.slice(0, 220) + '…' : text}
+      </p>
+    );
+  }
+
+  if (kind === 'file') {
+    const isImage = /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(
+      mem.file_name || ''
+    );
+    return (
+      <div style={{ marginTop: 8 }}>
+        {isImage && fileUrl ? (
+          <img
+            src={fileUrl}
+            alt={mem.file_name || 'Attached file'}
+            style={{
+              width: '100%',
+              maxHeight: 260,
+              objectFit: 'contain',
+              borderRadius: 10,
+              display: 'block',
+              background: C.ivory,
+            }}
+          />
+        ) : (
+          
+<a
+            href={fileUrl || '#'}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              background: C.ivory,
+              borderRadius: 10,
+              padding: '10px 12px',
+              textDecoration: 'none',
+            }}
+          >
+            <span style={{ fontSize: 20 }}>📄</span>
+            <span
+              style={{
+                ...sans,
+                fontSize: 13,
+                color: C.charcoal,
+                flex: 1,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {mem.file_name || 'Attached file'}
+            </span>
+            <span
+              style={{ ...sans, fontSize: 12, color: C.sage, fontWeight: 600 }}
+            >
+              Open
+            </span>
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}
+    >
+      <button
+        onClick={onTogglePlay}
+        style={{
+          background: C.sage,
+          border: 'none',
+          borderRadius: 14,
+          width: 28,
+          height: 28,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+        }}
+      >
+        {playing ? (
+          <PauseIcon size={10} color={C.cream} />
+        ) : (
+          <PlayIcon size={10} color={C.cream} />
+        )}
+      </button>
+      <div
+        style={{
+          flex: 1,
+          height: 3,
+          background: C.border,
+          borderRadius: 2,
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            width: `${playing ? progress * 100 : 0}%`,
+            height: '100%',
+            background: C.sage,
+            borderRadius: 2,
+            transition: 'width 0.1s linear',
+          }}
+        />
+      </div>
+      <span
+        style={{ ...sans, fontSize: 11, color: C.sageMid, flexShrink: 0 }}
+      >
+        {fmtDur(mem.duration_seconds)}
+      </span>
+    </div>
+  );
+}
+function TimelineScreen({ nav }: { nav: (s: Screen) => void }) {
+  const [profile, setProfile] = useState(
+    null as { name: string; date_of_birth: string } | null
+  );
+  const [memories, setMemories] = useState([] as any[]);
+  const [fileUrls, setFileUrls] = useState({} as { [id: string]: string });
+  const [playingId, setPlayingId] = useState(null as string | null);
+  const [progress, setProgress] = useState(0);
+  const audioRef = useRef(null as HTMLAudioElement | null);
+
+  const categoryEmoji: { [k: string]: string } = {
     Childhood: '🏡',
     Family: '👨‍👩‍👧',
     Places: '📍',
@@ -3086,10 +3278,28 @@ function TimelineScreen({ nav }: { nav: (s: Screen) => void }) {
 
       const { data: memoriesData } = await supabase
         .from('memories')
-        .select('id, prompt, audio_url, duration_seconds, category, created_at')
+        .select(
+          'id, prompt, body, audio_url, duration_seconds, category, created_at, happened_on, kind, file_url, file_name'
+        )
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false });
-      if (memoriesData) setMemories(memoriesData);
+
+      if (memoriesData) {
+        const sorted = [...memoriesData].sort((a, b) =>
+        (b.happened_on || b.created_at)
+          .slice(0, 10)
+          .localeCompare((a.happened_on || a.created_at).slice(0, 10))
+      );
+      setMemories(sorted);
+        const urls: { [id: string]: string } = {};
+        for (const m of memoriesData) {
+          if (m.kind === 'file' && m.file_url) {
+            const u = await getMemoryFileUrl(m.file_url);
+            if (u) urls[m.id] = u;
+          }
+        }
+        setFileUrls(urls);
+      }
     }
     loadData();
   }, []);
@@ -3110,15 +3320,9 @@ function TimelineScreen({ nav }: { nav: (s: Screen) => void }) {
     }
   }
 
-  function fmtDuration(s: number | null) {
-    if (!s) return '0:00';
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${String(sec).padStart(2, '0')}`;
-  }
-
   function fmtDate(iso: string) {
-    return new Date(iso).toLocaleDateString(undefined, {
+    const d = iso.length === 10 ? new Date(iso + 'T00:00:00') : new Date(iso);
+    return d.toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -3150,6 +3354,7 @@ function TimelineScreen({ nav }: { nav: (s: Screen) => void }) {
         }}
         style={{ display: 'none' }}
       />
+
       <div
         style={{
           padding: '8px 20px 16px',
@@ -3186,8 +3391,8 @@ function TimelineScreen({ nav }: { nav: (s: Screen) => void }) {
               marginTop: 40,
             }}
           >
-            No memories recorded yet. Tap the Add button below to record your
-            first one.
+            Nothing here yet. Tap the Add button below to save your first
+            memory.
           </p>
         ) : (
           <div style={{ position: 'relative', paddingLeft: 36 }}>
@@ -3229,7 +3434,7 @@ function TimelineScreen({ nav }: { nav: (s: Screen) => void }) {
                     letterSpacing: '0.04em',
                   }}
                 >
-                  {fmtDate(mem.created_at)}
+                                    {fmtDate(mem.happened_on || mem.created_at)}
                 </span>
 
                 <div
@@ -3252,7 +3457,7 @@ function TimelineScreen({ nav }: { nav: (s: Screen) => void }) {
                     <span style={{ fontSize: 22, flexShrink: 0, marginTop: 1 }}>
                       {categoryEmoji[mem.category ?? 'Childhood'] ?? '🌿'}
                     </span>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <h3
                         style={{
                           ...serif,
@@ -3264,67 +3469,13 @@ function TimelineScreen({ nav }: { nav: (s: Screen) => void }) {
                       >
                         {mem.prompt}
                       </h3>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          marginTop: 8,
-                        }}
-                      >
-                        <button
-                          onClick={() => togglePlay(mem.id, mem.audio_url)}
-                          style={{
-                            background: C.sage,
-                            border: 'none',
-                            borderRadius: 14,
-                            width: 26,
-                            height: 26,
-                            flexShrink: 0,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {playingId === mem.id ? (
-                            <PauseIcon size={10} color={C.cream} />
-                          ) : (
-                            <PlayIcon size={10} color={C.cream} />
-                          )}
-                        </button>
-                        <div
-                          style={{
-                            flex: 1,
-                            height: 3,
-                            background: C.border,
-                            borderRadius: 2,
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: `${
-                                playingId === mem.id ? progress * 100 : 0
-                              }%`,
-                              height: '100%',
-                              background: C.sage,
-                              borderRadius: 2,
-                              transition: 'width 0.1s linear',
-                            }}
-                          />
-                        </div>
-                        <span
-                          style={{
-                            ...sans,
-                            fontSize: 11,
-                            color: C.sageMid,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {fmtDuration(mem.duration_seconds)}
-                        </span>
-                      </div>
+                      <MemoryBody
+                        mem={mem}
+                        fileUrl={fileUrls[mem.id]}
+                        playing={playingId === mem.id}
+                        progress={progress}
+                        onTogglePlay={() => togglePlay(mem.id, mem.audio_url)}
+                      />
                     </div>
                   </div>
                 </div>
@@ -3389,23 +3540,14 @@ const lifeBookEntries = [
 
 function LifeBookScreen({ nav }: { nav: (s: Screen) => void }) {
   const [activeTab, setActiveTab] = useState('All');
-  const [profile, setProfile] = useState<{
-    name: string;
-    who_type: string | null;
-  } | null>(null);
-  const [memories, setMemories] = useState(
-    [] as {
-      id: string;
-      prompt: string;
-      audio_url: string;
-      duration_seconds: number | null;
-      category: string | null;
-      created_at: string;
-    }[]
+  const [profile, setProfile] = useState(
+    null as { name: string; who_type: string | null } | null
   );
-  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [memories, setMemories] = useState([] as any[]);
+  const [fileUrls, setFileUrls] = useState({} as { [id: string]: string });
+  const [playingId, setPlayingId] = useState(null as string | null);
   const [progress, setProgress] = useState(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef(null as HTMLAudioElement | null);
 
   const categories = [
     'Childhood',
@@ -3415,7 +3557,7 @@ function LifeBookScreen({ nav }: { nav: (s: Screen) => void }) {
     'Recipes',
     'Life Lessons',
   ];
-  const categoryEmoji: Record<string, string> = {
+  const categoryEmoji: { [k: string]: string } = {
     Childhood: '🏡',
     Family: '👨‍👩‍👧',
     Places: '📍',
@@ -3443,10 +3585,23 @@ function LifeBookScreen({ nav }: { nav: (s: Screen) => void }) {
 
       const { data: memoriesData } = await supabase
         .from('memories')
-        .select('id, prompt, audio_url, duration_seconds, category, created_at')
+        .select(
+          'id, prompt, body, audio_url, duration_seconds, category, created_at, happened_on, kind, file_url, file_name'
+        )
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false });
-      if (memoriesData) setMemories(memoriesData);
+
+      if (memoriesData) {
+        setMemories(memoriesData);
+        const urls: { [id: string]: string } = {};
+        for (const m of memoriesData) {
+          if (m.kind === 'file' && m.file_url) {
+            const u = await getMemoryFileUrl(m.file_url);
+            if (u) urls[m.id] = u;
+          }
+        }
+        setFileUrls(urls);
+      }
     }
     loadData();
   }, []);
@@ -3465,13 +3620,6 @@ function LifeBookScreen({ nav }: { nav: (s: Screen) => void }) {
       audioRef.current.play();
       setPlayingId(id);
     }
-  }
-
-  function fmtDuration(s: number | null) {
-    if (!s) return '0:00';
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${String(sec).padStart(2, '0')}`;
   }
 
   const filteredMemories =
@@ -3505,7 +3653,6 @@ function LifeBookScreen({ nav }: { nav: (s: Screen) => void }) {
         style={{ display: 'none' }}
       />
 
-      {/* Header */}
       <div style={{ background: C.sage, paddingBottom: 16 }}>
         <div style={{ padding: '20px 20px 0' }}>
           <h1
@@ -3519,9 +3666,7 @@ function LifeBookScreen({ nav }: { nav: (s: Screen) => void }) {
           >
             Life Book
           </h1>
-          <p
-            style={{ ...sans, fontSize: 13, color: `${C.cream}aa`, margin: 0 }}
-          >
+          <p style={{ ...sans, fontSize: 13, color: `${C.cream}aa`, margin: 0 }}>
             {profile
               ? profile.who_type === 'myself'
                 ? 'Your complete story'
@@ -3531,7 +3676,6 @@ function LifeBookScreen({ nav }: { nav: (s: Screen) => void }) {
         </div>
       </div>
 
-      {/* Tab bar */}
       <div
         style={{
           background: C.cream,
@@ -3581,7 +3725,7 @@ function LifeBookScreen({ nav }: { nav: (s: Screen) => void }) {
               marginTop: 40,
             }}
           >
-            No memories in this category yet.
+            Nothing in this category yet.
           </p>
         ) : (
           filteredMemories.map((mem) => (
@@ -3597,98 +3741,40 @@ function LifeBookScreen({ nav }: { nav: (s: Screen) => void }) {
               }}
             >
               <div style={{ padding: '14px 16px' }}>
-                <div
+                <span
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
+                    ...sans,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: C.sageMid,
+                    letterSpacing: '0.07em',
+                    textTransform: 'uppercase',
+                    display: 'block',
                     marginBottom: 6,
                   }}
                 >
-                  <span
-                    style={{
-                      ...sans,
-                      fontSize: 10,
-                      fontWeight: 600,
-                      color: C.sageMid,
-                      letterSpacing: '0.07em',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    {categoryEmoji[mem.category ?? 'Childhood'] ?? '🌿'}{' '}
-                    {mem.category ?? 'Childhood'}
-                  </span>
-                </div>
+                  {categoryEmoji[mem.category ?? 'Childhood'] ?? '🌿'}{' '}
+                  {mem.category ?? 'Childhood'}
+                </span>
                 <h3
                   style={{
                     ...serif,
                     fontSize: 17,
                     fontWeight: 600,
                     color: C.charcoal,
-                    margin: '0 0 10px',
+                    margin: '0 0 6px',
                     lineHeight: 1.3,
                   }}
                 >
                   {mem.prompt}
                 </h3>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <button
-                    onClick={() => togglePlay(mem.id, mem.audio_url)}
-                    style={{
-                      background: C.sage,
-                      border: 'none',
-                      borderRadius: 16,
-                      width: 30,
-                      height: 30,
-                      flexShrink: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {playingId === mem.id ? (
-                      <PauseIcon size={11} color={C.cream} />
-                    ) : (
-                      <PlayIcon size={11} color={C.cream} />
-                    )}
-                  </button>
-                  <div
-                    style={{
-                      flex: 1,
-                      height: 3,
-                      background: C.border,
-                      borderRadius: 2,
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: `${playingId === mem.id ? progress * 100 : 0}%`,
-                        height: '100%',
-                        background: C.sage,
-                        borderRadius: 2,
-                        transition: 'width 0.1s linear',
-                      }}
-                    />
-                  </div>
-                  <span
-                    style={{
-                      ...sans,
-                      fontSize: 11,
-                      color: C.muted,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {fmtDuration(mem.duration_seconds)}
-                  </span>
-                </div>
+                <MemoryBody
+                  mem={mem}
+                  fileUrl={fileUrls[mem.id]}
+                  playing={playingId === mem.id}
+                  progress={progress}
+                  onTogglePlay={() => togglePlay(mem.id, mem.audio_url)}
+                />
               </div>
             </div>
           ))
@@ -3708,6 +3794,7 @@ function WriteMemoryScreen({ nav }: { nav: (s: Screen) => void }) {
   const [title, setTitle] = useState(pendingEntry.prompt || '');
   const [body, setBody] = useState('');
   const [category, setCategory] = useState(pendingEntry.category || 'Childhood');
+  const [happenedOn, setHappenedOn] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -3813,6 +3900,7 @@ function WriteMemoryScreen({ nav }: { nav: (s: Screen) => void }) {
       prompt: title,
       body,
       category,
+      happened_on: happenedOn || null,
       kind: 'written',
     });
     setSaving(false);
@@ -3934,7 +4022,49 @@ function WriteMemoryScreen({ nav }: { nav: (s: Screen) => void }) {
             marginBottom: 20,
           }}
         />
-
+                <label
+          style={{
+            ...sans,
+            fontSize: 12,
+            fontWeight: 600,
+            color: C.muted,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            display: 'block',
+            marginBottom: 6,
+          }}
+        >
+          When did this happen?
+        </label>
+        <input
+          type="date"
+          value={happenedOn}
+          onChange={(e) => setHappenedOn(e.target.value)}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '13px 16px',
+            background: C.cream,
+            border: `1.5px solid ${C.border}`,
+            borderRadius: 12,
+            ...sans,
+            fontSize: 15,
+            color: C.charcoal,
+            outline: 'none',
+            marginBottom: 6,
+          }}
+        />
+        <p
+          style={{
+            ...sans,
+            fontSize: 12,
+            color: C.muted,
+            margin: '0 0 20px',
+          }}
+        >
+          Optional. Roughly is fine — if you only know the year, pick any day in
+          it.
+        </p>
         <label
           style={{
             ...sans,
@@ -4048,7 +4178,367 @@ style={{
     </div>
   );
 }
+function UploadFileScreen({ nav }: { nav: (s: Screen) => void }) {
+  const [file, setFile] = useState(null as File | null);
+  const [preview, setPreview] = useState(null as string | null);
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState(pendingEntry.category || 'Family');
+  const [happenedOn, setHappenedOn] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef(null as HTMLInputElement | null);
 
+  const cats = [
+    { label: 'Childhood', emoji: '🏡' },
+    { label: 'Family', emoji: '👨‍👩‍👧' },
+    { label: 'Places', emoji: '📍' },
+    { label: 'Music', emoji: '🎵' },
+    { label: 'Recipes', emoji: '🫕' },
+    { label: 'Life Lessons', emoji: '✨' },
+  ];
+
+  function pickFile(e: any) {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    setError('');
+    if (f.size > 20 * 1024 * 1024) {
+      setError('That file is over 20MB. Please choose a smaller one.');
+      return;
+    }
+    setFile(f);
+    if (!title.trim()) setTitle(f.name.replace(/\.[^.]+$/, ''));
+    setPreview(f.type.startsWith('image/') ? URL.createObjectURL(f) : null);
+  }
+
+  async function handleSave() {
+    setError('');
+    if (!file) {
+      setError('Choose a file first.');
+      return;
+    }
+    setSaving(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setError('You need to be signed in.');
+      setSaving(false);
+      return;
+    }
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `${user.id}/${Date.now()}-${safeName}`;
+
+    const { error: upErr } = await supabase.storage
+      .from('memory-files')
+      .upload(path, file);
+    if (upErr) {
+      setError(upErr.message);
+      setSaving(false);
+      return;
+    }
+
+    const { data: profileRow } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { error: insErr } = await supabase.from('memories').insert({
+      owner_id: user.id,
+      profile_id: profileRow?.id ?? null,
+      prompt: title.trim() || file.name,
+      category,
+      happened_on: happenedOn || null,
+      kind: 'file',
+      file_url: path,
+      file_name: file.name,
+    });
+
+    setSaving(false);
+    if (insErr) {
+      setError(insErr.message);
+      return;
+    }
+    nav('life-book');
+  }
+
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        background: C.ivory,
+      }}
+    >
+      <div
+        style={{
+          padding: '12px 16px 0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <BackArrow onPress={() => nav('dashboard')} />
+        <span style={{ ...sans, fontSize: 14, color: C.muted }}>
+          {category}
+        </span>
+      </div>
+
+      <div
+        style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 40px' }}
+        className="hide-scroll"
+      >
+        <h1
+          style={{
+            ...serif,
+            fontSize: 26,
+            fontWeight: 600,
+            color: C.charcoal,
+            margin: '0 0 6px',
+          }}
+        >
+          Add a photo or document
+        </h1>
+        <p
+          style={{ ...sans, fontSize: 14, color: C.muted, margin: '0 0 24px' }}
+        >
+          An old photograph, a letter, a scanned recipe card.
+        </p>
+
+        <button
+          type="button"
+          onClick={() => inputRef.current && inputRef.current.click()}
+          style={{
+            width: '100%',
+            minHeight: 160,
+            background: C.cream,
+            border: `2px dashed ${C.sageMid}`,
+            borderRadius: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            cursor: 'pointer',
+            overflow: 'hidden',
+            padding: preview ? 12 : 20,
+            marginBottom: 20,
+          }}
+        >
+          {preview ? (
+            <img
+              src={preview}
+              alt="Selected"
+              style={{
+                width: '100%',
+                maxHeight: 320,
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
+          ) : file ? (
+            <>
+              <span style={{ fontSize: 34 }}>📄</span>
+              <span
+                style={{ ...sans, fontSize: 14, color: C.charcoal }}
+              >
+                {file.name}
+              </span>
+              <span style={{ ...sans, fontSize: 12, color: C.muted }}>
+                Tap to choose a different file
+              </span>
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: 34 }}>📎</span>
+              <span
+                style={{
+                  ...sans,
+                  fontSize: 15,
+                  fontWeight: 600,
+                  color: C.charcoal,
+                }}
+              >
+                Choose a file
+              </span>
+              <span style={{ ...sans, fontSize: 12, color: C.muted }}>
+                Photos, PDFs or documents, up to 20MB
+              </span>
+            </>
+          )}
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          onChange={pickFile}
+          style={{ display: 'none' }}
+        />
+
+        <label
+          style={{
+            ...sans,
+            fontSize: 12,
+            fontWeight: 600,
+            color: C.muted,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            display: 'block',
+            marginBottom: 6,
+          }}
+        >
+          What is it?
+        </label>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="e.g. Wedding photograph, July 1969"
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '14px 16px',
+            background: C.cream,
+            border: `1.5px solid ${C.border}`,
+            borderRadius: 12,
+            ...sans,
+            fontSize: 15,
+            color: C.charcoal,
+            outline: 'none',
+            marginBottom: 20,
+          }}
+        />
+                <label
+          style={{
+            ...sans,
+            fontSize: 12,
+            fontWeight: 600,
+            color: C.muted,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            display: 'block',
+            marginBottom: 6,
+          }}
+        >
+          When did this happen?
+        </label>
+        <input
+          type="date"
+          value={happenedOn}
+          onChange={(e) => setHappenedOn(e.target.value)}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '13px 16px',
+            background: C.cream,
+            border: `1.5px solid ${C.border}`,
+            borderRadius: 12,
+            ...sans,
+            fontSize: 15,
+            color: C.charcoal,
+            outline: 'none',
+            marginBottom: 6,
+          }}
+        />
+        <p
+          style={{
+            ...sans,
+            fontSize: 12,
+            color: C.muted,
+            margin: '0 0 20px',
+          }}
+        >
+          Optional. Roughly is fine — if you only know the year, pick any day in
+          it.
+        </p>
+        <label
+          style={{
+            ...sans,
+            fontSize: 12,
+            fontWeight: 600,
+            color: C.muted,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            display: 'block',
+            marginBottom: 10,
+          }}
+        >
+          Where does this belong?
+        </label>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 8,
+            marginBottom: 24,
+          }}
+        >
+          {cats.map((c) => (
+            <button
+              key={c.label}
+              onClick={() => setCategory(c.label)}
+              style={{
+                ...sans,
+                fontSize: 13,
+                fontWeight: category === c.label ? 600 : 400,
+                color: category === c.label ? C.cream : C.charcoal,
+                background: category === c.label ? C.sage : C.cream,
+                border: `1.5px solid ${
+                  category === c.label ? C.sage : C.border
+                }`,
+                borderRadius: 20,
+                padding: '8px 14px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span>{c.emoji}</span>
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        {error && (
+          <p
+            style={{
+              ...sans,
+              fontSize: 13,
+              color: '#B3452C',
+              margin: '0 0 12px',
+            }}
+          >
+            {error}
+          </p>
+        )}
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            width: '100%',
+            padding: '16px',
+            background: C.sage,
+            border: 'none',
+            borderRadius: 12,
+            ...sans,
+            fontSize: 16,
+            fontWeight: 600,
+            color: C.cream,
+            cursor: 'pointer',
+            boxShadow: `0 4px 20px ${C.sage}44`,
+          }}
+        >
+          {saving ? 'Uploading…' : 'Save to vault'}
+        </button>
+      </div>
+    </div>
+  );
+}
 function ProfileScreen({ nav }: { nav: (s: Screen) => void }) {
   const [shareFamily, setShareFamily] = useState(true);
   const [notifications, setNotifications] = useState(true);
@@ -4553,6 +5043,8 @@ export default function App() {
           return <ProfileScreen nav={setCurrentScreen} />;
         case 'write-memory':
           return <WriteMemoryScreen nav={setCurrentScreen} />;
+          case 'upload-file':
+            return <UploadFileScreen nav={setCurrentScreen} />;
     }
   };
 
